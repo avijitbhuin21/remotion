@@ -1,97 +1,155 @@
-import {config} from './config';
-import {renderVideo} from './render';
-import {ensureBucketExists} from './s3';
+import {bundle} from '@remotion/bundler';
+import {renderMedia, selectComposition} from '@remotion/renderer';
+import type {Request, Response} from 'express';
+import express from 'express';
+import {createRequire} from 'node:module';
+import {randomUUID} from 'node:crypto';
+import {existsSync, mkdirSync, rmSync} from 'node:fs';
+import {join} from 'node:path';
+import pLimit from 'p-limit';
 
-const jsonResponse = (data: unknown, status = 200): Response =>
-	new Response(JSON.stringify(data), {
-		status,
-		headers: {'Content-Type': 'application/json'},
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const MAX_CONCURRENT = process.env.MAX_CONCURRENT_RENDERS
+	? parseInt(process.env.MAX_CONCURRENT_RENDERS, 10)
+	: 8;
+
+const require = createRequire(import.meta.url);
+
+const app = express();
+app.use(express.json({limit: '10mb'}));
+
+const limit = pLimit(MAX_CONCURRENT);
+
+const OUT_DIR = join(process.cwd(), 'out');
+if (!existsSync(OUT_DIR)) {
+	mkdirSync(OUT_DIR, {recursive: true});
+}
+
+let bundleCache: string | null = null;
+
+const getBundle = async (): Promise<string> => {
+	if (bundleCache) return bundleCache;
+
+	const entryPoint = require.resolve('./index');
+	bundleCache = await bundle({
+		entryPoint,
+		webpackOverride: (config) => config,
 	});
 
-const handleHealth = (): Response =>
-	jsonResponse({status: 'ok', timestamp: new Date().toISOString()});
-
-const handleRender = async (req: Request): Promise<Response> => {
-	let body: unknown;
-	try {
-		body = await req.json();
-	} catch {
-		return jsonResponse({error: 'Invalid JSON body'}, 400);
-	}
-
-	if (
-		typeof body !== 'object' ||
-		body === null ||
-		!('tsxCode' in body) ||
-		!('compositionId' in body)
-	) {
-		return jsonResponse(
-			{error: 'Missing required fields: tsxCode, compositionId'},
-			400,
-		);
-	}
-
-	const {
-		tsxCode,
-		compositionId,
-		durationInFrames,
-		fps,
-		width,
-		height,
-		props,
-	} = body as Record<string, unknown>;
-
-	if (typeof tsxCode !== 'string' || tsxCode.trim() === '') {
-		return jsonResponse({error: 'tsxCode must be a non-empty string'}, 400);
-	}
-
-	if (typeof compositionId !== 'string' || compositionId.trim() === '') {
-		return jsonResponse({error: 'compositionId must be a non-empty string'}, 400);
-	}
-
-	try {
-		const result = await renderVideo({
-			tsxCode,
-			compositionId,
-			durationInFrames:
-				typeof durationInFrames === 'number' ? durationInFrames : undefined,
-			fps: typeof fps === 'number' ? fps : undefined,
-			width: typeof width === 'number' ? width : undefined,
-			height: typeof height === 'number' ? height : undefined,
-			props:
-				typeof props === 'object' && props !== null
-					? (props as Record<string, unknown>)
-					: undefined,
-		});
-
-		return jsonResponse({success: true, url: result.url, key: result.key});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		console.error('Render error:', message);
-		return jsonResponse({error: message}, 500);
-	}
+	return bundleCache;
 };
 
-const server = Bun.serve({
-	port: config.port,
-	async fetch(req) {
-		const url = new URL(req.url);
-
-		if (req.method === 'GET' && url.pathname === '/health') {
-			return handleHealth();
-		}
-
-		if (req.method === 'POST' && url.pathname === '/render') {
-			return handleRender(req);
-		}
-
-		return jsonResponse({error: 'Not found'}, 404);
-	},
+app.get('/health', (_req: Request, res: Response) => {
+	res.json({
+		status: 'ok',
+		maxConcurrentRenders: MAX_CONCURRENT,
+		activRenders: MAX_CONCURRENT - limit.pendingCount,
+		pendingRenders: limit.pendingCount,
+		timestamp: new Date().toISOString(),
+	});
 });
 
-console.log(`Initializing S3 bucket...`);
-await ensureBucketExists();
+type RenderRequestBody = {
+	compositionId: string;
+	inputProps?: Record<string, unknown>;
+	codec?: 'h264' | 'h265' | 'vp8' | 'vp9' | 'gif' | 'prores' | 'mp3' | 'aac' | 'wav';
+	imageFormat?: 'png' | 'jpeg' | 'none';
+	jpegQuality?: number;
+	crf?: number;
+	scale?: number;
+};
 
-console.log(`Remotion Render Server running on http://localhost:${server.port}`);
-console.log(`  GET  /health  — health check`);
-console.log(`  POST /render  — render a video from TSX code`);
+app.post('/render', async (req: Request, res: Response) => {
+	const body = req.body as RenderRequestBody;
+
+	if (!body.compositionId) {
+		res.status(400).json({
+			success: false,
+			error: 'Missing required field: compositionId',
+		});
+		return;
+	}
+
+	const jobId = randomUUID();
+	const outputPath = join(OUT_DIR, `${jobId}.mp4`);
+
+	try {
+		await limit(async () => {
+			const serveUrl = await getBundle();
+
+			const composition = await selectComposition({
+				serveUrl,
+				id: body.compositionId,
+				inputProps: body.inputProps ?? {},
+			});
+
+			await renderMedia({
+				codec: body.codec ?? 'h264',
+				composition,
+				serveUrl,
+				outputLocation: outputPath,
+				chromiumOptions: {
+					enableMultiProcessOnLinux: true,
+				},
+				inputProps: body.inputProps ?? {},
+				imageFormat: body.imageFormat ?? 'jpeg',
+				jpegQuality: body.jpegQuality ?? 80,
+				...(body.crf !== undefined ? {crf: body.crf} : {}),
+				...(body.scale !== undefined ? {scale: body.scale} : {}),
+			});
+		});
+
+		res.setHeader('Content-Type', 'video/mp4');
+		res.setHeader(
+			'Content-Disposition',
+			`attachment; filename="${body.compositionId}-${jobId}.mp4"`,
+		);
+		res.setHeader('X-Job-Id', jobId);
+
+		const {createReadStream} = await import('node:fs');
+		const stream = createReadStream(outputPath);
+
+		stream.on('end', () => {
+			try {
+				rmSync(outputPath, {force: true});
+			} catch {
+			}
+		});
+
+		stream.on('error', (err) => {
+			console.error(`Stream error for job ${jobId}:`, err);
+			rmSync(outputPath, {force: true});
+		});
+
+		stream.pipe(res);
+	} catch (err: unknown) {
+		try {
+			rmSync(outputPath, {force: true});
+		} catch {
+		}
+
+		const errorMessage =
+			err instanceof Error ? err.message : String(err);
+		const errorStack =
+			err instanceof Error ? err.stack : undefined;
+
+		console.error(`Render failed for job ${jobId}:`, errorMessage);
+
+		res.status(500).json({
+			success: false,
+			jobId,
+			compositionId: body.compositionId,
+			error: errorMessage,
+			stack: process.env.NODE_ENV !== 'production' ? errorStack : undefined,
+		});
+	}
+});
+
+app.listen(PORT, () => {
+	console.log(`Remotion render server running on port ${PORT}`);
+	console.log(`Max concurrent renders: ${MAX_CONCURRENT}`);
+	console.log('Pre-warming bundle...');
+	getBundle()
+		.then(() => console.log('Bundle ready.'))
+		.catch((err) => console.error('Bundle warm-up failed:', err));
+});

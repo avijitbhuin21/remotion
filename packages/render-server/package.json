@@ -2,24 +2,26 @@
 	"name": "@remotion/render-server",
 	"version": "1.0.0",
 	"private": true,
-	"description": "Remotion video render API server",
+	"description": "Standalone Remotion rendering API server",
 	"scripts": {
 		"dev": "bun --watch src/server.ts",
-		"start": "bun src/server.ts",
-		"build": "tsc --noEmit"
+		"start": "bun src/server.ts"
 	},
 	"dependencies": {
-		"@aws-sdk/client-s3": "3.986.0",
-		"@remotion/bundler": "workspace:*",
-		"@remotion/renderer": "workspace:*",
-		"remotion": "workspace:*",
-		"react": "catalog:",
-		"react-dom": "catalog:"
+		"@remotion/bundler": "4.0.435",
+		"@remotion/cli": "4.0.435",
+		"@remotion/renderer": "4.0.435",
+		"express": "^4.21.2",
+		"p-limit": "^6.2.0",
+		"remotion": "4.0.435"
 	},
 	"devDependencies": {
-		"@types/bun": "catalog:",
-		"@types/node": "catalog:",
-		"@types/react": "catalog:",
-		"@types/react-dom": "catalog:"
+		"@types/express": "^5.0.1",
+		"@types/node": "^20.12.14",
+		"@types/react": "^19.0.0",
+		"@types/react-dom": "^19.0.0",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"typescript": "^5.9.3"
 	}
 }
