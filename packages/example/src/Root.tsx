@@ -151,6 +151,7 @@ import {
 	OverlayWithOffset,
 } from './TransitionSeriesOverlay';
 import {TriangleComp} from './Triangle';
+import {NewVideoBufferStateComp} from './VideoInterruptedByForeignBuffer';
 import {VideoTestingPlayback} from './VideoTesting/playback';
 import {VideoTestingTrim} from './VideoTesting/trim';
 import {RemotionMediaVideoTexture} from './VideoTexture';
@@ -788,6 +789,7 @@ export const Index: React.FC = () => {
 				/>
 				<OffthreadRemoteVideo />
 				<NewVideoComp />
+				<NewVideoBufferStateComp />
 				<LoopDisplayTestComp />
 				<OffthreadRemoteSeries />
 				<LoopedNewVideo />
@@ -1475,16 +1477,16 @@ export const Index: React.FC = () => {
 					defaultProps={{
 						title: 'sdasds',
 						delay: 5.2,
-						color: '#df822a',
+						color: 'rgba(223, 42, 42, 0.46)',
 						list: [{name: 'first', age: 12}],
-						matrix: [0, 1, 1, 0],
+						matrix: [0, 1, 1, 0] as const,
 						description: 'Sample description \nOn multiple lines',
 						dropdown: 'a' as const,
 						superSchema: [
 							{type: 'a' as const, a: {a: 'hi'}},
 							{type: 'b' as const, b: {b: 'hi'}},
 						],
-						discriminatedUnion: {type: 'auto'},
+						discriminatedUnion: {type: 'auto' as const},
 						tuple: ['foo', 42, {a: 'hi'}],
 					}}
 				/>
