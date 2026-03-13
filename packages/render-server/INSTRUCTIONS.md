@@ -78,6 +78,9 @@ Renders a video from a Remotion TSX component and uploads it to S3.
 | `width` | number | No | 1920 | Video width in pixels |
 | `height` | number | No | 1080 | Video height in pixels |
 | `props` | object | No | `{}` | Props passed to the composition component |
+| `codec` | string | No | `"h264"` | Output codec: `"h264"`, `"h265"`, `"vp8"`, `"vp9"`, `"gif"`, `"prores"`, `"mp3"`, `"aac"`, `"wav"` |
+
+> **GIF support:** Set `"codec": "gif"` to render an animated GIF. The server automatically uses PNG frame capture (required for GIF) and returns `image/gif` with a `.gif` file extension. Keep GIF compositions short (≤ 5s) and at a lower resolution to avoid large file sizes.
 
 **Response:**
 

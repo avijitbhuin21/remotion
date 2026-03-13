@@ -93,7 +93,10 @@ app.post('/render', async (req: Request, res: Response) => {
 	}
 
 	const jobId = randomUUID();
-	const outputPath = join(OUT_DIR, `${jobId}.mp4`);
+	const codec = body.codec ?? 'h264';
+	const isGif = codec === 'gif';
+	const fileExtension = isGif ? 'gif' : 'mp4';
+	const outputPath = join(OUT_DIR, `${jobId}.${fileExtension}`);
 
 	try {
 		await limit(async () => {
@@ -106,7 +109,7 @@ app.post('/render', async (req: Request, res: Response) => {
 			});
 
 			await renderMedia({
-				codec: body.codec ?? 'h264',
+				codec,
 				composition,
 				serveUrl,
 				outputLocation: outputPath,
@@ -114,17 +117,17 @@ app.post('/render', async (req: Request, res: Response) => {
 					enableMultiProcessOnLinux: true,
 				},
 				inputProps: body.inputProps ?? {},
-				imageFormat: body.imageFormat ?? 'jpeg',
-				jpegQuality: body.jpegQuality ?? 80,
+				imageFormat: isGif ? 'png' : (body.imageFormat ?? 'jpeg'),
+				...(isGif ? {} : {jpegQuality: body.jpegQuality ?? 80}),
 				...(body.crf !== undefined ? {crf: body.crf} : {}),
 				...(body.scale !== undefined ? {scale: body.scale} : {}),
 			});
 		});
 
-		res.setHeader('Content-Type', 'video/mp4');
+		res.setHeader('Content-Type', isGif ? 'image/gif' : 'video/mp4');
 		res.setHeader(
 			'Content-Disposition',
-			`attachment; filename="${body.compositionId}-${jobId}.mp4"`,
+			`attachment; filename="${body.compositionId}-${jobId}.${fileExtension}"`,
 		);
 		res.setHeader('X-Job-Id', jobId);
 
