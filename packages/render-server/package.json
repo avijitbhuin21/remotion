@@ -8,6 +8,8 @@
 		"start": "bun src/server.ts"
 	},
 	"dependencies": {
+		"@aws-sdk/client-s3": "^3.1008.0",
+		"@aws-sdk/lib-storage": "^3.1008.0",
 		"@remotion/bundler": "4.0.435",
 		"@remotion/cli": "4.0.435",
 		"@remotion/renderer": "4.0.435",
