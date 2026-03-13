@@ -1,3 +1,0 @@
-<phpunit bootstrap="tests/bootstrap.php">
-  <!-- Other configurations -->
-</phpunit>

@@ -1,3 +1,0 @@
-source 'https://rubygems.org'
-
-gem 'remotion_lambda', path: '../lambda-ruby'

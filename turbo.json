@@ -12,12 +12,6 @@
 			"outputLogs": "new-only"
 		},
 		"clean": {},
-		"testssr": {
-			"dependsOn": ["^make", "@remotion/example#bundle"]
-		},
-		"testlambda": {
-			"dependsOn": ["^make", "@remotion/example#bundle"]
-		},
 		"testwebcodecs": {
 			"dependsOn": ["@remotion/webcodecs#make"]
 		},
@@ -39,16 +33,6 @@
 			"outputs": ["build", "./node_modules/.cache"],
 			"outputLogs": "new-only"
 		},
-		"@remotion/example#test": {
-			"dependsOn": ["@remotion/example#bundle"],
-			"outputs": [],
-			"outputLogs": "new-only"
-		},
-		"build-docs": {
-			"dependsOn": ["^make", "make", "@remotion/convert#build-spa", "@remotion/brand#bundle"],
-			"outputs": [".docusaurus", "build", "node_modules/.cache/twoslash"],
-			"outputLogs": "new-only"
-		},
 		"test": {
 			"dependsOn": ["^make", "make"],
 			"outputs": [],
@@ -58,8 +42,6 @@
 			"dependsOn": [
 				"^make",
 				"make",
-				"@remotion/lambda#make",
-				"@remotion/it-tests#test",
 				"@remotion/example#bundle"
 			],
 			"outputs": [],
@@ -67,8 +49,7 @@
 		},
 		"lint": {
 			"dependsOn": [
-				"@remotion/eslint-config-internal#make",
-				"@remotion/eslint-config#make",
+				"@remotion/eslint-config-flat#make",
 				"^make"
 			],
 			"outputs": [],
@@ -79,42 +60,8 @@
 			"dependsOn": ["^make"],
 			"outputLogs": "new-only"
 		},
-		"@remotion/fig-autocomplete#make": {
-			"outputs": ["src"],
-			"dependsOn": ["^make"],
-			"outputLogs": "new-only"
-		},
-		"@remotion/cloudrun#make": {
-			"dependsOn": ["^make"],
-			"outputs": ["dist", "container/dist", "gcpInstaller/gcpInstaller.tar"],
-			"outputLogs": "new-only"
-		},
 		"@remotion/compositor#make": {
 			"outputs": ["target/debug/build", "target/release/build"],
-			"outputLogs": "new-only"
-		},
-		"@remotion/it-tests#test": {
-			"dependsOn": [
-				"^make",
-				"@remotion/studio#make",
-				"@remotion/example#bundle"
-			],
-			"outputLogs": "new-only"
-		},
-		"@remotion/convert#build-page": {
-			"dependsOn": ["make", "^make"],
-			"outputs": ["build", ".vercel"],
-			"outputLogs": "new-only"
-		},
-		"@remotion/convert#build-spa": {
-			"dependsOn": ["make", "^make"],
-			"outputs": ["spa-dist"],
-			"outputLogs": "new-only"
-		},
-		"@remotion/brand#bundle": {
-			"dependsOn": ["^make"],
-			"inputs": ["src/**", "public/**", "remotion.config.*", "package.json", "tsconfig.json"],
-			"outputs": ["build"],
 			"outputLogs": "new-only"
 		}
 	}

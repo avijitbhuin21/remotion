@@ -1,7 +1,0 @@
-tsconfig.json
-tsconfig.tsbuildinfo
-src
-postcss.config.js
-eslint.config.mjs
-.turbo
-bundle.ts
