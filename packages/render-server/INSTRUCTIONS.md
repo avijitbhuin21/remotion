@@ -26,7 +26,7 @@ Copy `.env.example` to `.env` and fill in values:
 | `S3_REGION` | **Yes** | e.g. `us-east-1` |
 | `S3_ACCESS_KEY` | **Yes** | S3 access key ID |
 | `S3_SECRET_KEY` | **Yes** | S3 secret access key |
-| `S3_ENDPOINT` | No | Custom endpoint URL for MinIO/Railway e.g. `https://bucket.up.railway.app`. When set, the URL is built as `{S3_ENDPOINT}/{S3_BUCKET}/{key}` instead of the default AWS pattern. |
+| `S3_ENDPOINT` | **Yes** | Custom endpoint URL for MinIO/Railway e.g. `https://bucket.up.railway.app`. URL is built as `{S3_ENDPOINT}/{S3_BUCKET}/{key}`. |
 
 The server will **create the bucket automatically** if it does not exist at startup. All rendered files are uploaded to S3 and the local temp file is deleted after upload.
 
@@ -57,27 +57,32 @@ Response:
 
 ### `POST /render`
 
-Renders a video/gif/audio from a Remotion composition, uploads the result to S3, and returns a public URL.
+Renders a video from a dynamically provided Remotion composition (as TSX source code), uploads the result to S3, and returns a public URL.
 
 **Request body (JSON):**
 
 ```json
 {
+  "tsxCode": "<string — full TSX source of your Comp component>",
   "compositionId": "<string>",
-  "inputProps": {},
-  "codec": "h264",
-  "imageFormat": "jpeg",
-  "jpegQuality": 80,
-  "crf": 18,
-  "scale": 1
+  "durationInFrames": 150,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "props": {}
 }
 ```
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `compositionId` | string | ✅ | — | The ID registered with `<Composition id="...">` |
-| `inputProps` | object | No | `{}` | Props passed to the composition component |
+| `tsxCode` | string | ✅ | — | Full TSX source code of the `Comp` component to render. Must export a named export `Comp`. |
+| `compositionId` | string | ✅ | — | The composition ID to register and render. |
 | `codec` | string | No | `"h264"` | Output codec: `"h264"`, `"h265"`, `"vp8"`, `"vp9"`, `"gif"`, `"prores"`, `"mp3"`, `"aac"`, `"wav"` |
+| `durationInFrames` | number | No | `150` | Total number of frames to render |
+| `fps` | number | No | `30` | Frames per second |
+| `width` | number | No | `1920` | Output width in pixels |
+| `height` | number | No | `1080` | Output height in pixels |
+| `props` | object | No | `{}` | Props passed into the composition component |
 | `imageFormat` | string | No | `"jpeg"` | Frame capture format: `"jpeg"`, `"png"`, `"none"`. Auto-set to `"png"` for GIF. |
 | `jpegQuality` | number | No | `80` | JPEG quality 0–100. Ignored for GIF. |
 | `crf` | number | No | codec default | Constant rate factor (lower = better quality, larger file) |
@@ -97,12 +102,29 @@ Renders a video/gif/audio from a Remotion composition, uploads the result to S3,
 | `aac` | `.aac` | `audio/aac` |
 | `wav` | `.wav` | `audio/wav` |
 
+**How `tsxCode` works:**
+
+The server writes your `tsxCode` to a temporary `Comp.tsx` file and auto-generates an `index.tsx` entry file that wires it into a Remotion `<Composition>` with the given `compositionId`, dimensions, fps, and duration. Your `Comp.tsx` must export a React component named `Comp`.
+
+Example minimal `tsxCode`:
+
+```tsx
+import {AbsoluteFill} from 'remotion';
+
+export const Comp: React.FC<{text: string}> = ({text}) => {
+  return (
+    <AbsoluteFill style={{backgroundColor: 'red', justifyContent: 'center', alignItems: 'center'}}>
+      <h1 style={{color: 'white'}}>{text}</h1>
+    </AbsoluteFill>
+  );
+};
+```
+
 **Success response:**
 
 ```json
 {
   "success": true,
-  "jobId": "abc123",
   "url": "https://bucket.up.railway.app/my-bucket/renders/abc123.mp4",
   "key": "renders/abc123.mp4"
 }
@@ -113,7 +135,6 @@ Renders a video/gif/audio from a Remotion composition, uploads the result to S3,
 ```json
 {
   "success": false,
-  "jobId": "abc123",
   "compositionId": "MyComp",
   "error": "Human-readable error message"
 }
@@ -127,20 +148,13 @@ Renders a video/gif/audio from a Remotion composition, uploads the result to S3,
 curl -X POST http://localhost:3000/render \
   -H "Content-Type: application/json" \
   -d '{
+    "tsxCode": "import {AbsoluteFill} from '\''remotion'\''; export const Comp: React.FC<{text: string}> = ({text}) => (<AbsoluteFill style={{backgroundColor: '\''#000'\'', justifyContent: '\''center'\'', alignItems: '\''center'\''}}><h1 style={{color: '\''#fff'\''}}>{text}</h1></AbsoluteFill>);",
     "compositionId": "MyComp",
-    "inputProps": { "title": "Hello World" },
-    "codec": "h264"
-  }'
-```
-
-GIF example:
-
-```bash
-curl -X POST http://localhost:3000/render \
-  -H "Content-Type: application/json" \
-  -d '{
-    "compositionId": "MyComp",
-    "codec": "gif"
+    "durationInFrames": 90,
+    "fps": 30,
+    "width": 1280,
+    "height": 720,
+    "props": { "text": "Hello from dynamic render!" }
   }'
 ```
 
@@ -153,4 +167,4 @@ curl -X POST http://localhost:3000/render \
 - The server downloads Chromium automatically on first render — this may take 30–60s on cold start
 - Renders are CPU and memory intensive — use at least 2 vCPU / 4GB RAM on Railway
 - Output files are stored in S3 permanently; the server deletes local temp files after each upload
-- GIF renders should be kept short (≤ 5s) and at a lower resolution to avoid large file sizes
+- Each render creates a fresh bundle from the provided `tsxCode` — there is no shared bundle cache between requests
