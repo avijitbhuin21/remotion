@@ -1,5 +1,5 @@
 import {bundle} from '@remotion/bundler';
-import {renderMedia, selectComposition} from '@remotion/renderer';
+import {ensureBrowser, renderMedia, selectComposition} from '@remotion/renderer';
 import type {Request, Response} from 'express';
 import express from 'express';
 import {createRequire} from 'node:module';
@@ -26,6 +26,7 @@ if (!existsSync(OUT_DIR)) {
 }
 
 let bundleCache: string | null = null;
+let isReady = false;
 
 const getBundle = async (): Promise<string> => {
 	if (bundleCache) return bundleCache;
@@ -39,11 +40,24 @@ const getBundle = async (): Promise<string> => {
 	return bundleCache;
 };
 
+const warmup = async (): Promise<void> => {
+	console.log('Ensuring Chromium is installed...');
+	await ensureBrowser();
+	console.log('Chromium ready.');
+
+	console.log('Pre-warming Remotion bundle...');
+	await getBundle();
+	console.log('Bundle ready.');
+
+	isReady = true;
+	console.log('Server is fully ready to accept render requests.');
+};
+
 app.get('/health', (_req: Request, res: Response) => {
-	res.json({
-		status: 'ok',
+	res.status(isReady ? 200 : 503).json({
+		status: isReady ? 'ok' : 'warming_up',
 		maxConcurrentRenders: MAX_CONCURRENT,
-		activRenders: MAX_CONCURRENT - limit.pendingCount,
+		activeRenders: MAX_CONCURRENT - limit.pendingCount,
 		pendingRenders: limit.pendingCount,
 		timestamp: new Date().toISOString(),
 	});
@@ -60,6 +74,14 @@ type RenderRequestBody = {
 };
 
 app.post('/render', async (req: Request, res: Response) => {
+	if (!isReady) {
+		res.status(503).json({
+			success: false,
+			error: 'Server is still warming up. Please retry in a few seconds.',
+		});
+		return;
+	}
+
 	const body = req.body as RenderRequestBody;
 
 	if (!body.compositionId) {
@@ -148,8 +170,8 @@ app.post('/render', async (req: Request, res: Response) => {
 app.listen(PORT, () => {
 	console.log(`Remotion render server running on port ${PORT}`);
 	console.log(`Max concurrent renders: ${MAX_CONCURRENT}`);
-	console.log('Pre-warming bundle...');
-	getBundle()
-		.then(() => console.log('Bundle ready.'))
-		.catch((err) => console.error('Bundle warm-up failed:', err));
+	warmup().catch((err) => {
+		console.error('Warmup failed:', err);
+		process.exit(1);
+	});
 });
